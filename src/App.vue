@@ -112,6 +112,15 @@
                       </span>
                       <span>Copy Link</span>
                     </button>
+                    <button
+                      @click="removeFile(file.name)"
+                      class="button is-small is-danger"
+                    >
+                      <span class="icon">
+                        <i class="fas fa-trash"></i>
+                      </span>
+                      <span>Remove</span>
+                    </button>
                   </td>
                 </tr>
               </tbody>
@@ -153,6 +162,33 @@ export default {
     };
   },
   methods: {
+    async removeFile(fileName) {
+      const confirmDelete = confirm(`Are you sure you want to delete "${fileName}"?`);
+      if (!confirmDelete) return;
+
+      try {
+        const token = localStorage.getItem("github_token");
+        if (!token || !this.owner || !this.repoName) {
+          alert("Missing token or repo information.");
+          return;
+        }
+
+        const response = await axios.delete(
+          `https://polo-techrepublic-spreading-wright.trycloudflare.com/api/delete-file/${this.owner}/${this.repoName}/${fileName}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+
+        alert(response.data.message);
+        this.fetchFiles(); // Refresh the file list after deletion
+      } catch (error) {
+        console.error("Failed to delete file:", error?.response?.data || error);
+        alert("Error deleting file.");
+      }
+    },
     async copyToClipboard(url) {
       try {
         await navigator.clipboard.writeText(url);
@@ -167,7 +203,8 @@ export default {
     },
     authenticate() {
       // Start the GitHub OAuth flow
-      window.location.href = "https://polo-techrepublic-spreading-wright.trycloudflare.com/auth/github";
+      window.location.href =
+        "https://polo-techrepublic-spreading-wright.trycloudflare.com/auth/github";
     },
     onFileChange(e) {
       this.file = e.target.files[0];
