@@ -174,7 +174,7 @@ export default {
         }
 
         const response = await axios.delete(
-          `https://polo-techrepublic-spreading-wright.trycloudflare.com/api/delete-file/${this.owner}/${this.repoName}/${fileName}`,
+          `https://statements-eastern-delivers-glen.trycloudflare.com/api/delete-file/${this.owner}/${this.repoName}/${fileName}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -204,7 +204,7 @@ export default {
     authenticate() {
       // Start the GitHub OAuth flow
       window.location.href =
-        "https://polo-techrepublic-spreading-wright.trycloudflare.com/auth/github";
+        "https://statements-eastern-delivers-glen.trycloudflare.com/auth/github";
     },
     onFileChange(e) {
       this.file = e.target.files[0];
@@ -229,7 +229,7 @@ export default {
         this.uploadMessage = "";
 
         const response = await axios.post(
-          `https://polo-techrepublic-spreading-wright.trycloudflare.com/api/upload/${this.owner}/${this.repoName}`,
+          `https://statements-eastern-delivers-glen.trycloudflare.com/api/upload/${this.owner}/${this.repoName}`,
           formData,
           {
             headers: {
@@ -264,7 +264,7 @@ export default {
         if (!token || !this.owner || !this.repoName) return;
 
         const response = await axios.get(
-          `https://polo-techrepublic-spreading-wright.trycloudflare.com/api/list-files/${this.owner}/${this.repoName}`,
+          `https://statements-eastern-delivers-glen.trycloudflare.com/api/list-files/${this.owner}/${this.repoName}`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
