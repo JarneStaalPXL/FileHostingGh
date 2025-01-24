@@ -40,11 +40,10 @@
             <h3 class="title is-6 mb-3">Upload Files or Folders</h3>
 
             <form @submit.prevent="uploadFiles" class="field">
-              <!-- Bulma file input styling (you can style these however you want) -->
               <div class="field mb-3">
                 <label class="label">Select a Folder</label>
                 <div class="control">
-                  <!-- 'webkitdirectory directory' for entire folder selection (Chromium browsers) -->
+                  <!-- 'webkitdirectory directory' for entire folder selection -->
                   <input
                     type="file"
                     webkitdirectory
@@ -57,7 +56,6 @@
               <div class="field mb-3">
                 <label class="label">Or Select Files</label>
                 <div class="control">
-                  <!-- Multiple file selection -->
                   <input
                     type="file"
                     multiple
@@ -66,12 +64,11 @@
                 </div>
               </div>
 
-              <!-- Show how many items (files) we've collected so far -->
+              <!-- Show how many chunked items we have in the array -->
               <p v-if="files.length > 0" class="mb-3">
-                <strong>{{ files.length }}</strong> item(s) selected
+                <strong>{{ files.length }}</strong> item(s) ready
               </p>
 
-              <!-- Upload Button -->
               <div class="control">
                 <button type="submit" class="button is-primary" :disabled="uploading">
                   <span v-if="!uploading">Upload</span>
@@ -80,7 +77,7 @@
               </div>
             </form>
 
-            <!-- Progress bar (Bulma) -->
+            <!-- Progress bar -->
             <div v-if="uploading" class="mt-3">
               <progress class="progress is-info" :value="uploadProgress" max="100">
                 {{ uploadProgress }}%
@@ -91,7 +88,7 @@
             <p v-if="uploadMessage" class="has-text-success mt-2">{{ uploadMessage }}</p>
           </div>
 
-          <!-- File list table -->
+          <!-- File list table from the repo -->
           <div v-if="filesInRepo && filesInRepo.length > 0" class="mt-5">
             <h3 class="title is-6">Files in Repository</h3>
             <table class="table is-fullwidth is-bordered is-hoverable">
@@ -107,7 +104,6 @@
                   <td>{{ file.name }}</td>
                   <td>{{ file.size }}</td>
                   <td class="buttons">
-                    <!-- Download single file -->
                     <a
                       :href="file.download_url"
                       target="_blank"
@@ -119,7 +115,6 @@
                       </span>
                       <span>Download</span>
                     </a>
-                    <!-- Copy link -->
                     <button
                       @click="copyToClipboard(file.download_url)"
                       class="button is-small is-info"
@@ -129,7 +124,6 @@
                       </span>
                       <span>Copy Link</span>
                     </button>
-                    <!-- Remove file -->
                     <button
                       @click="removeFile(file.name)"
                       class="button is-small is-danger"
@@ -173,12 +167,19 @@
 <script>
 import axios from "axios";
 
+// Let’s define a constant 100 MB chunk threshold
+const MAX_CHUNK_SIZE = 100 * 1024 * 1024; // 100 MB
+
 export default {
   name: "App",
   data() {
     return {
       isAuthenticated: false,
-      files: [],          // holds both folder and file picks
+
+      // We'll store final upload "entries" in this.files,
+      // Each entry is { blob: File|Blob, displayName: string }
+      files: [],
+
       uploadMessage: "",
       owner: "",
       repoName: "",
@@ -194,18 +195,51 @@ export default {
         "https://statements-eastern-delivers-glen.trycloudflare.com/auth/github";
     },
 
-    // When the user selects a FOLDER
+    // Called when user selects a folder (webkitdirectory)
     onFolderSelected(e) {
       const folderFiles = Array.from(e.target.files);
-      // Append them to the existing array
-      this.files = this.files.concat(folderFiles);
+      folderFiles.forEach((file) => {
+        this.addFileWithChunking(file);
+      });
     },
 
-    // When the user selects one or more FILES
+    // Called when user selects normal single/multiple files
     onFileSelected(e) {
       const selectedFiles = Array.from(e.target.files);
-      // Append them to the existing array
-      this.files = this.files.concat(selectedFiles);
+      selectedFiles.forEach((file) => {
+        this.addFileWithChunking(file);
+      });
+    },
+
+    // The "magic" method: checks if file > 100MB => splits
+    addFileWithChunking(file) {
+      // If the file is smaller than 100 MB, it's just one chunk
+      if (file.size <= MAX_CHUNK_SIZE) {
+        // We keep the "displayName" as either webkitRelativePath or fallback to file.name
+        const name = file.webkitRelativePath || file.name;
+        this.files.push({
+          blob: file,
+          displayName: name,
+        });
+      } else {
+        // If bigger, slice it into 100 MB pieces
+        const totalChunks = Math.ceil(file.size / MAX_CHUNK_SIZE);
+        for (let i = 0; i < totalChunks; i++) {
+          const start = i * MAX_CHUNK_SIZE;
+          const end = Math.min(file.size, start + MAX_CHUNK_SIZE);
+          const chunkBlob = file.slice(start, end);
+
+          // We'll name the chunk so the backend can reassemble
+          // e.g. "myFolder/myBigFile.mp4__CHUNK_0-of-5"
+          const baseName = file.webkitRelativePath || file.name;
+          const chunkName = `${baseName}__CHUNK_${i}-of-${totalChunks}`;
+
+          this.files.push({
+            blob: chunkBlob,
+            displayName: chunkName,
+          });
+        }
+      }
     },
 
     async uploadFiles() {
@@ -219,14 +253,13 @@ export default {
           return;
         }
 
-        // Prepare form data with *all* selected files
+        // Prepare form data with *all* chunked items
         const formData = new FormData();
-        // "file.webkitRelativePath" is crucial for subfolders
-        this.files.forEach((file) => {
-          formData.append("files", file, file.webkitRelativePath || file.name);
+        this.files.forEach((entry) => {
+          formData.append("files", entry.blob, entry.displayName);
         });
 
-        // Reset progress + set "uploading" state
+        // Reset progress & UI
         this.uploadProgress = 0;
         this.uploading = true;
         this.uploadMessage = "";
@@ -257,7 +290,7 @@ export default {
         this.uploadMessage = "Error uploading files.";
       } finally {
         this.uploading = false;
-        this.files = []; // clear the selected items
+        this.files = []; // clear the selected chunk items
       }
     },
 
