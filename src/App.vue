@@ -33,27 +33,30 @@
           </p>
           <hr />
 
-          <!-- Upload a file -->
+          <!-- Upload multiple files -->
           <div class="box">
-            <h3 class="title is-6 mb-3">Upload a File</h3>
-            <form @submit.prevent="uploadFile" class="field has-addons">
+            <h3 class="title is-6 mb-3">Upload Files (Multiple)</h3>
+            <form @submit.prevent="uploadFiles" class="field has-addons">
               <!-- Bulma file input styling -->
               <div class="file has-name mr-2">
                 <label class="file-label">
+                  <!-- The 'multiple' attribute lets you select multiple files -->
                   <input
                     class="file-input"
                     type="file"
-                    name="file"
+                    name="files"
+                    multiple
                     @change="onFileChange"
                   />
                   <span class="file-cta">
                     <span class="file-icon">
                       <i class="fas fa-upload"></i>
                     </span>
-                    <span class="file-label"> Choose a file… </span>
+                    <span class="file-label">Choose files…</span>
                   </span>
-                  <span class="file-name" v-if="file">
-                    {{ file.name }}
+                  <!-- Show how many files selected -->
+                  <span class="file-name" v-if="files.length > 0">
+                    {{ files.length }} file(s) selected
                   </span>
                 </label>
               </div>
@@ -77,21 +80,22 @@
           </div>
 
           <!-- File list table -->
-          <div v-if="files && files.length > 0" class="mt-5">
+          <div v-if="filesInRepo && filesInRepo.length > 0" class="mt-5">
             <h3 class="title is-6">Files in Repository</h3>
             <table class="table is-fullwidth is-bordered is-hoverable">
               <thead>
                 <tr>
                   <th>File Name</th>
                   <th>Size (bytes)</th>
-                  <th>Download</th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="file in files" :key="file.sha">
+                <tr v-for="file in filesInRepo" :key="file.sha">
                   <td>{{ file.name }}</td>
                   <td>{{ file.size }}</td>
                   <td class="buttons">
+                    <!-- Download single file -->
                     <a
                       :href="file.download_url"
                       target="_blank"
@@ -103,6 +107,7 @@
                       </span>
                       <span>Download</span>
                     </a>
+                    <!-- Copy link -->
                     <button
                       @click="copyToClipboard(file.download_url)"
                       class="button is-small is-info"
@@ -112,6 +117,7 @@
                       </span>
                       <span>Copy Link</span>
                     </button>
+                    <!-- Remove file -->
                     <button
                       @click="removeFile(file.name)"
                       class="button is-small is-danger"
@@ -127,16 +133,25 @@
             </table>
           </div>
 
-          <div v-else-if="files && files.length === 0" class="mt-5">
+          <div v-else-if="filesInRepo && filesInRepo.length === 0" class="mt-5">
             <p>No files found in this repo yet.</p>
           </div>
 
-          <button @click="fetchFiles" class="button is-info mt-3">
-            <span class="icon">
-              <i class="fas fa-sync-alt"></i>
-            </span>
-            <span>Refresh File List</span>
-          </button>
+          <!-- Refresh and Download entire repo -->
+          <div class="buttons mt-3">
+            <button @click="fetchFiles" class="button is-info">
+              <span class="icon">
+                <i class="fas fa-sync-alt"></i>
+              </span>
+              <span>Refresh File List</span>
+            </button>
+            <button @click="downloadRepo" class="button is-primary">
+              <span class="icon">
+                <i class="fas fa-file-archive"></i>
+              </span>
+              <span>Download Full Repo</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -151,17 +166,76 @@ export default {
   data() {
     return {
       isAuthenticated: false,
-      file: null,
+      files: [],          // <--- store multiple files here
       uploadMessage: "",
       owner: "",
       repoName: "",
-      files: [],
-      // For progress bar
+      filesInRepo: [],    // rename the listing to avoid confusion with 'files'
       uploading: false,
       uploadProgress: 0,
     };
   },
   methods: {
+    authenticate() {
+      // Start the GitHub OAuth flow
+      window.location.href =
+        "https://statements-eastern-delivers-glen.trycloudflare.com/auth/github";
+    },
+    onFileChange(e) {
+      // Convert FileList to array
+      this.files = Array.from(e.target.files);
+    },
+    async uploadFiles() {
+      if (this.files.length === 0) {
+        return;
+      }
+      try {
+        const token = localStorage.getItem("github_token");
+        if (!token || !this.owner || !this.repoName) {
+          this.uploadMessage = "Missing token or repo info.";
+          return;
+        }
+
+        // Prepare form data with *all* selected files
+        const formData = new FormData();
+        this.files.forEach((file) => {
+          formData.append("files", file);
+        });
+
+        // Reset progress + set "uploading" state
+        this.uploadProgress = 0;
+        this.uploading = true;
+        this.uploadMessage = "";
+
+        // POST to the multi-file upload endpoint
+        const response = await axios.post(
+          `https://statements-eastern-delivers-glen.trycloudflare.com/api/upload/${this.owner}/${this.repoName}`,
+          formData,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": "multipart/form-data",
+            },
+            onUploadProgress: (progressEvent) => {
+              if (progressEvent.total) {
+                this.uploadProgress = Math.round(
+                  (progressEvent.loaded * 100) / progressEvent.total
+                );
+              }
+            },
+          }
+        );
+
+        this.uploadMessage = response.data.message;
+        this.fetchFiles();
+      } catch (error) {
+        console.error("Failed to upload files:", error);
+        this.uploadMessage = "Error uploading files.";
+      } finally {
+        this.uploading = false;
+        this.files = []; // clear the selected files
+      }
+    },
     async removeFile(fileName) {
       const confirmDelete = confirm(`Are you sure you want to delete "${fileName}"?`);
       if (!confirmDelete) return;
@@ -195,67 +269,10 @@ export default {
         this.uploadMessage = "Link copied to clipboard!";
         setTimeout(() => {
           this.uploadMessage = "";
-        }, 2000); // Clear the message after 2 seconds
+        }, 2000);
       } catch (error) {
         console.error("Failed to copy link:", error);
         this.uploadMessage = "Failed to copy link.";
-      }
-    },
-    authenticate() {
-      // Start the GitHub OAuth flow
-      window.location.href =
-        "https://statements-eastern-delivers-glen.trycloudflare.com/auth/github";
-    },
-    onFileChange(e) {
-      this.file = e.target.files[0];
-    },
-    async uploadFile() {
-      if (!this.file) return;
-
-      try {
-        const token = localStorage.getItem("github_token");
-        if (!token || !this.owner || !this.repoName) {
-          this.uploadMessage = "Missing token or repo info.";
-          return;
-        }
-
-        // Prepare form data
-        const formData = new FormData();
-        formData.append("file", this.file);
-
-        // Reset progress + set "uploading" state
-        this.uploadProgress = 0;
-        this.uploading = true;
-        this.uploadMessage = "";
-
-        const response = await axios.post(
-          `https://statements-eastern-delivers-glen.trycloudflare.com/api/upload/${this.owner}/${this.repoName}`,
-          formData,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "multipart/form-data",
-            },
-            onUploadProgress: (progressEvent) => {
-              // progressEvent.loaded / progressEvent.total gives fraction
-              if (progressEvent.total) {
-                this.uploadProgress = Math.round(
-                  (progressEvent.loaded * 100) / progressEvent.total
-                );
-              }
-            },
-          }
-        );
-
-        this.uploadMessage = response.data.message;
-
-        // Refresh the file list
-        this.fetchFiles();
-      } catch (error) {
-        console.error("Failed to upload file:", error);
-        this.uploadMessage = "Error uploading file.";
-      } finally {
-        this.uploading = false;
       }
     },
     async fetchFiles() {
@@ -271,16 +288,46 @@ export default {
             },
           }
         );
-        this.files = response.data;
+        this.filesInRepo = response.data;
       } catch (error) {
         console.error("Failed to fetch files:", error);
       }
     },
+    async downloadRepo() {
+      try {
+        const token = localStorage.getItem("github_token");
+        if (!token || !this.owner || !this.repoName) return;
+
+        // This calls our new /api/download-repo endpoint (see backend below).
+        // It returns a zip file stream. We force a download by creating a blob.
+        const response = await axios.get(
+          `https://statements-eastern-delivers-glen.trycloudflare.com/api/download-repo/${this.owner}/${this.repoName}`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+            responseType: "arraybuffer", // important for binary data
+          }
+        );
+
+        // Create a Blob and download it
+        const blob = new Blob([response.data], { type: "application/zip" });
+        const downloadUrl = URL.createObjectURL(blob);
+
+        // Create temporary link, click it
+        const link = document.createElement("a");
+        link.href = downloadUrl;
+        link.download = `${this.repoName}.zip`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(downloadUrl);
+      } catch (error) {
+        console.error("Failed to download repo:", error);
+      }
+    },
   },
   mounted() {
-    // Check URL params for token, owner, repo
+    // Check URL params for token, owner, repo (from the OAuth redirect)
     const params = new URLSearchParams(window.location.search);
-
     const token = params.get("token");
     const owner = params.get("owner");
     const repo = params.get("repo");
@@ -292,11 +339,12 @@ export default {
       this.isAuthenticated = true;
       this.owner = owner;
       this.repoName = repo;
-      window.history.replaceState({}, document.title, "/");
+      window.history.replaceState({}, document.title, "/"); // remove query params
       this.fetchFiles();
       return;
     }
-    // If already logged in
+
+    // If already logged in in a previous session
     const storedToken = localStorage.getItem("github_token");
     const storedOwner = localStorage.getItem("github_owner");
     const storedRepo = localStorage.getItem("github_repo");
@@ -312,9 +360,6 @@ export default {
 </script>
 
 <style scoped>
-/* We assume you imported Bulma in main.js or similar.
-   Optionally, override some styles here. */
-
 #app {
   max-width: 900px;
   margin: 0 auto;
@@ -324,7 +369,7 @@ export default {
   margin-bottom: 2rem;
 }
 .file-name {
-  max-width: 150px;
+  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
