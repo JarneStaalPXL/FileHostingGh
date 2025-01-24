@@ -5,7 +5,7 @@
       <div class="hero is-primary mb-5">
         <div class="hero-body">
           <p class="title is-3">GitHub Hosted Files</p>
-          <p class="subtitle">Store & Download files (and folders!) in your own GitHub repository</p>
+          <p class="subtitle">Store &amp; Download files (and folders!) in your own GitHub repository</p>
         </div>
       </div>
 
