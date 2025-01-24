@@ -385,6 +385,10 @@ export default {
     // Check URL params for token, owner, repo
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
+    if(!token) {
+      this.isAuthenticated = false;
+      return;
+    }
     const owner = params.get("owner");
     const repo = params.get("repo");
 
