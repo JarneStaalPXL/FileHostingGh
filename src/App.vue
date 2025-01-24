@@ -5,7 +5,9 @@
       <div class="hero is-primary mb-5">
         <div class="hero-body">
           <p class="title is-3">GitHub Hosted Files</p>
-          <p class="subtitle">Store &amp; Download files (and folders!) in your own GitHub repository</p>
+          <p class="subtitle">
+            Store &amp; Download files (and folders!) in your own GitHub repository
+          </p>
         </div>
       </div>
 
@@ -36,33 +38,41 @@
           <!-- Upload multiple files/folders -->
           <div class="box">
             <h3 class="title is-6 mb-3">Upload Files or Folders</h3>
-            <form @submit.prevent="uploadFiles" class="field has-addons">
-              <!-- Bulma file input styling -->
-              <div class="file has-name mr-2">
-                <label class="file-label">
-                  <!-- 'webkitdirectory directory' allows entire folder selection in most Chromium-based browsers -->
+
+            <form @submit.prevent="uploadFiles" class="field">
+              <!-- Bulma file input styling (you can style these however you want) -->
+              <div class="field mb-3">
+                <label class="label">Select a Folder</label>
+                <div class="control">
+                  <!-- 'webkitdirectory directory' for entire folder selection (Chromium browsers) -->
                   <input
-                    class="file-input"
                     type="file"
-                    name="files"
-                    multiple
                     webkitdirectory
                     directory
-                    @change="onFileChange"
+                    @change="onFolderSelected"
                   />
-                  <span class="file-cta">
-                    <span class="file-icon">
-                      <i class="fas fa-upload"></i>
-                    </span>
-                    <span class="file-label">Choose folder/files…</span>
-                  </span>
-                  <!-- Show how many files selected -->
-                  <span class="file-name" v-if="files.length > 0">
-                    {{ files.length }} item(s) selected
-                  </span>
-                </label>
+                </div>
               </div>
-              <div>
+
+              <div class="field mb-3">
+                <label class="label">Or Select Files</label>
+                <div class="control">
+                  <!-- Multiple file selection -->
+                  <input
+                    type="file"
+                    multiple
+                    @change="onFileSelected"
+                  />
+                </div>
+              </div>
+
+              <!-- Show how many items (files) we've collected so far -->
+              <p v-if="files.length > 0" class="mb-3">
+                <strong>{{ files.length }}</strong> item(s) selected
+              </p>
+
+              <!-- Upload Button -->
+              <div class="control">
                 <button type="submit" class="button is-primary" :disabled="uploading">
                   <span v-if="!uploading">Upload</span>
                   <span v-else>Uploading...</span>
@@ -168,27 +178,36 @@ export default {
   data() {
     return {
       isAuthenticated: false,
-      files: [],          // store multiple File objects here
+      files: [],          // holds both folder and file picks
       uploadMessage: "",
       owner: "",
       repoName: "",
-      filesInRepo: [],    // the file/folder listing
+      filesInRepo: [],
       uploading: false,
       uploadProgress: 0,
     };
   },
   methods: {
+    // Start GitHub OAuth
     authenticate() {
-      // Start the GitHub OAuth flow
       window.location.href =
         "https://statements-eastern-delivers-glen.trycloudflare.com/auth/github";
     },
-    onFileChange(e) {
-      // Convert FileList to array
-      // If the user selected a folder, each file includes webkitRelativePath
-      const fileList = Array.from(e.target.files);
-      this.files = fileList;
+
+    // When the user selects a FOLDER
+    onFolderSelected(e) {
+      const folderFiles = Array.from(e.target.files);
+      // Append them to the existing array
+      this.files = this.files.concat(folderFiles);
     },
+
+    // When the user selects one or more FILES
+    onFileSelected(e) {
+      const selectedFiles = Array.from(e.target.files);
+      // Append them to the existing array
+      this.files = this.files.concat(selectedFiles);
+    },
+
     async uploadFiles() {
       if (this.files.length === 0) {
         return;
@@ -202,10 +221,8 @@ export default {
 
         // Prepare form data with *all* selected files
         const formData = new FormData();
-        // IMPORTANT: pass the third argument to preserve path info:
+        // "file.webkitRelativePath" is crucial for subfolders
         this.files.forEach((file) => {
-          // The third param sets the filename = file.webkitRelativePath
-          // so GitHub sees subfolders. e.g. "assets/images/pic.jpg"
           formData.append("files", file, file.webkitRelativePath || file.name);
         });
 
@@ -214,7 +231,7 @@ export default {
         this.uploading = true;
         this.uploadMessage = "";
 
-        // POST to the multi-file upload endpoint
+        // POST to your multi-file endpoint
         const response = await axios.post(
           `https://statements-eastern-delivers-glen.trycloudflare.com/api/upload/${this.owner}/${this.repoName}`,
           formData,
@@ -233,16 +250,17 @@ export default {
           }
         );
 
-        this.uploadMessage = response.data.message;
+        this.uploadMessage = response.data.message || "Upload complete.";
         this.fetchFiles();
       } catch (error) {
         console.error("Failed to upload files:", error);
         this.uploadMessage = "Error uploading files.";
       } finally {
         this.uploading = false;
-        this.files = []; // clear the selected files
+        this.files = []; // clear the selected items
       }
     },
+
     async removeFile(fileName) {
       const confirmDelete = confirm(`Are you sure you want to delete "${fileName}"?`);
       if (!confirmDelete) return;
@@ -264,12 +282,13 @@ export default {
         );
 
         alert(response.data.message);
-        this.fetchFiles(); // Refresh the file list after deletion
+        this.fetchFiles();
       } catch (error) {
         console.error("Failed to delete file:", error?.response?.data || error);
         alert("Error deleting file.");
       }
     },
+
     async copyToClipboard(url) {
       try {
         await navigator.clipboard.writeText(url);
@@ -282,6 +301,7 @@ export default {
         this.uploadMessage = "Failed to copy link.";
       }
     },
+
     async fetchFiles() {
       try {
         const token = localStorage.getItem("github_token");
@@ -300,17 +320,17 @@ export default {
         console.error("Failed to fetch files:", error);
       }
     },
+
     async downloadRepo() {
       try {
         const token = localStorage.getItem("github_token");
         if (!token || !this.owner || !this.repoName) return;
 
-        // This calls our new /api/download-repo endpoint
         const response = await axios.get(
           `https://statements-eastern-delivers-glen.trycloudflare.com/api/download-repo/${this.owner}/${this.repoName}`,
           {
             headers: { Authorization: `Bearer ${token}` },
-            responseType: "arraybuffer", // important for binary data
+            responseType: "arraybuffer",
           }
         );
 
@@ -318,7 +338,6 @@ export default {
         const blob = new Blob([response.data], { type: "application/zip" });
         const downloadUrl = URL.createObjectURL(blob);
 
-        // Create temporary link, click it
         const link = document.createElement("a");
         link.href = downloadUrl;
         link.download = `${this.repoName}.zip`;
@@ -332,7 +351,7 @@ export default {
     },
   },
   mounted() {
-    // Check URL params for token, owner, repo (from the OAuth redirect)
+    // Check URL params for token, owner, repo
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
     const owner = params.get("owner");
@@ -350,7 +369,7 @@ export default {
       return;
     }
 
-    // If already logged in in a previous session
+    // If already logged in previously
     const storedToken = localStorage.getItem("github_token");
     const storedOwner = localStorage.getItem("github_owner");
     const storedRepo = localStorage.getItem("github_repo");
