@@ -5,7 +5,7 @@
       <div class="hero is-primary mb-5">
         <div class="hero-body">
           <p class="title is-3">GitHub Hosted Files</p>
-          <p class="subtitle">Store & Download files in your own GitHub repository</p>
+          <p class="subtitle">Store & Download files (and folders!) in your own GitHub repository</p>
         </div>
       </div>
 
@@ -33,30 +33,32 @@
           </p>
           <hr />
 
-          <!-- Upload multiple files -->
+          <!-- Upload multiple files/folders -->
           <div class="box">
-            <h3 class="title is-6 mb-3">Upload Files (Multiple)</h3>
+            <h3 class="title is-6 mb-3">Upload Files or Folders</h3>
             <form @submit.prevent="uploadFiles" class="field has-addons">
               <!-- Bulma file input styling -->
               <div class="file has-name mr-2">
                 <label class="file-label">
-                  <!-- The 'multiple' attribute lets you select multiple files -->
+                  <!-- 'webkitdirectory directory' allows entire folder selection in most Chromium-based browsers -->
                   <input
                     class="file-input"
                     type="file"
                     name="files"
                     multiple
+                    webkitdirectory
+                    directory
                     @change="onFileChange"
                   />
                   <span class="file-cta">
                     <span class="file-icon">
                       <i class="fas fa-upload"></i>
                     </span>
-                    <span class="file-label">Choose files…</span>
+                    <span class="file-label">Choose folder/files…</span>
                   </span>
                   <!-- Show how many files selected -->
                   <span class="file-name" v-if="files.length > 0">
-                    {{ files.length }} file(s) selected
+                    {{ files.length }} item(s) selected
                   </span>
                 </label>
               </div>
@@ -166,11 +168,11 @@ export default {
   data() {
     return {
       isAuthenticated: false,
-      files: [],          // <--- store multiple files here
+      files: [],          // store multiple File objects here
       uploadMessage: "",
       owner: "",
       repoName: "",
-      filesInRepo: [],    // rename the listing to avoid confusion with 'files'
+      filesInRepo: [],    // the file/folder listing
       uploading: false,
       uploadProgress: 0,
     };
@@ -183,7 +185,9 @@ export default {
     },
     onFileChange(e) {
       // Convert FileList to array
-      this.files = Array.from(e.target.files);
+      // If the user selected a folder, each file includes webkitRelativePath
+      const fileList = Array.from(e.target.files);
+      this.files = fileList;
     },
     async uploadFiles() {
       if (this.files.length === 0) {
@@ -198,8 +202,11 @@ export default {
 
         // Prepare form data with *all* selected files
         const formData = new FormData();
+        // IMPORTANT: pass the third argument to preserve path info:
         this.files.forEach((file) => {
-          formData.append("files", file);
+          // The third param sets the filename = file.webkitRelativePath
+          // so GitHub sees subfolders. e.g. "assets/images/pic.jpg"
+          formData.append("files", file, file.webkitRelativePath || file.name);
         });
 
         // Reset progress + set "uploading" state
@@ -298,8 +305,7 @@ export default {
         const token = localStorage.getItem("github_token");
         if (!token || !this.owner || !this.repoName) return;
 
-        // This calls our new /api/download-repo endpoint (see backend below).
-        // It returns a zip file stream. We force a download by creating a blob.
+        // This calls our new /api/download-repo endpoint
         const response = await axios.get(
           `https://statements-eastern-delivers-glen.trycloudflare.com/api/download-repo/${this.owner}/${this.repoName}`,
           {
@@ -339,7 +345,7 @@ export default {
       this.isAuthenticated = true;
       this.owner = owner;
       this.repoName = repo;
-      window.history.replaceState({}, document.title, "/"); // remove query params
+      window.history.replaceState({}, document.title, "/");
       this.fetchFiles();
       return;
     }
