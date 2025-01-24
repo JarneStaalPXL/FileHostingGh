@@ -249,31 +249,61 @@ export default {
     },
 
     async uploadFiles() {
-      console.log("Files to upload:", this.files);
-      const formData = new FormData();
-      this.files.forEach((entry) => {
-        console.log("Adding file to FormData:", entry.displayName);
-        formData.append("files", entry.blob, entry.displayName);
-      });
+      const CHUNK_SIZE = 100; // Number of files per batch (adjust as needed)
+      const token = localStorage.getItem("github_token");
+      if (!token || !this.owner || !this.repoName) {
+        this.uploadMessage = "Missing token or repo info.";
+        return;
+      }
+
+      const chunks = [];
+      for (let i = 0; i < this.files.length; i += CHUNK_SIZE) {
+        chunks.push(this.files.slice(i, i + CHUNK_SIZE));
+      }
+
+      this.uploading = true;
+      this.uploadProgress = 0;
 
       try {
-        const token = localStorage.getItem("github_token");
-        const response = await axios.post(
-          `https://statements-eastern-delivers-glen.trycloudflare.com/api/upload/${this.owner}/${this.repoName}`,
-          formData,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "multipart/form-data",
-            },
-          }
-        );
-        console.log("Upload response:", response.data);
+        for (let index = 0; index < chunks.length; index++) {
+          const chunk = chunks[index];
+          const formData = new FormData();
+          chunk.forEach((entry) => {
+            formData.append("files", entry.blob, entry.displayName);
+          });
+
+          // Send the chunk
+          await axios.post(
+            `https://statements-eastern-delivers-glen.trycloudflare.com/api/upload/${this.owner}/${this.repoName}`,
+            formData,
+            {
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "multipart/form-data",
+              },
+              onUploadProgress: (progressEvent) => {
+                if (progressEvent.total) {
+                  const totalFilesUploaded = index * CHUNK_SIZE + progressEvent.loaded;
+                  this.uploadProgress = Math.round(
+                    (totalFilesUploaded * 100) / this.files.length
+                  );
+                }
+              },
+            }
+          );
+
+          console.log(`Batch ${index + 1}/${chunks.length} uploaded.`);
+        }
+
+        this.uploadMessage = "All files uploaded successfully.";
       } catch (error) {
-        console.error("Upload failed:", error);
+        console.error("Failed to upload batch:", error);
+        this.uploadMessage = "Error uploading files.";
+      } finally {
+        this.uploading = false;
+        this.files = []; // Clear files after upload
       }
     },
-
     async removeFile(fileName) {
       const confirmDelete = confirm(`Are you sure you want to delete "${fileName}"?`);
       if (!confirmDelete) return;
