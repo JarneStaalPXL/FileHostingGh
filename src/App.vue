@@ -194,11 +194,19 @@ export default {
     // Called when user selects a folder (webkitdirectory)
     onFolderSelected(e) {
       const folderFiles = Array.from(e.target.files);
-      const folderName = folderFiles[0]?.webkitRelativePath.split("/")[0]; // Eerste map
+      if (folderFiles.length === 0) {
+        console.error("No files selected from folder.");
+        return;
+      }
+
+      // Extract folder name and log the file paths
+      const folderName = folderFiles[0]?.webkitRelativePath.split("/")[0];
+      console.log("Selected folder:", folderName);
+
       folderFiles.forEach((file) => {
+        console.log("Processing file:", file.webkitRelativePath);
         this.addFileWithChunking(file);
       });
-      console.log("Folder selected:", folderName);
     },
 
     // Called when user selects normal single/multiple files
@@ -241,28 +249,15 @@ export default {
     },
 
     async uploadFiles() {
-      if (this.files.length === 0) {
-        return;
-      }
+      console.log("Files to upload:", this.files);
+      const formData = new FormData();
+      this.files.forEach((entry) => {
+        console.log("Adding file to FormData:", entry.displayName);
+        formData.append("files", entry.blob, entry.displayName);
+      });
+
       try {
         const token = localStorage.getItem("github_token");
-        if (!token || !this.owner || !this.repoName) {
-          this.uploadMessage = "Missing token or repo info.";
-          return;
-        }
-
-        // Prepare form data with *all* chunked items
-        const formData = new FormData();
-        this.files.forEach((entry) => {
-          formData.append("files", entry.blob, entry.displayName);
-        });
-
-        // Reset progress & UI
-        this.uploadProgress = 0;
-        this.uploading = true;
-        this.uploadMessage = "";
-
-        // POST to your multi-file endpoint
         const response = await axios.post(
           `https://statements-eastern-delivers-glen.trycloudflare.com/api/upload/${this.owner}/${this.repoName}`,
           formData,
@@ -271,24 +266,11 @@ export default {
               Authorization: `Bearer ${token}`,
               "Content-Type": "multipart/form-data",
             },
-            onUploadProgress: (progressEvent) => {
-              if (progressEvent.total) {
-                this.uploadProgress = Math.round(
-                  (progressEvent.loaded * 100) / progressEvent.total
-                );
-              }
-            },
           }
         );
-
-        this.uploadMessage = response.data.message || "Upload complete.";
-        this.fetchFiles();
+        console.log("Upload response:", response.data);
       } catch (error) {
-        console.error("Failed to upload files:", error);
-        this.uploadMessage = "Error uploading files.";
-      } finally {
-        this.uploading = false;
-        this.files = []; // clear the selected chunk items
+        console.error("Upload failed:", error);
       }
     },
 
@@ -385,7 +367,7 @@ export default {
     // Check URL params for token, owner, repo
     const params = new URLSearchParams(window.location.search);
     const token = params.get("token");
-    if(!token) {
+    if (!token) {
       this.isAuthenticated = false;
       return;
     }
