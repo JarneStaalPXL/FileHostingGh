@@ -249,13 +249,14 @@ export default {
     },
 
     async uploadFiles() {
-      const CHUNK_SIZE = 100; // Number of files per batch (adjust as needed)
+      const CHUNK_SIZE = 100; // Number of files per batch
       const token = localStorage.getItem("github_token");
       if (!token || !this.owner || !this.repoName) {
         this.uploadMessage = "Missing token or repo info.";
         return;
       }
 
+      // Split files into chunks
       const chunks = [];
       for (let i = 0; i < this.files.length; i += CHUNK_SIZE) {
         chunks.push(this.files.slice(i, i + CHUNK_SIZE));
@@ -272,32 +273,32 @@ export default {
             formData.append("files", entry.blob, entry.displayName);
           });
 
-          // Send the chunk
-          await axios.post(
+          // Send the chunk using fetch
+          const response = await fetch(
             `https://statements-eastern-delivers-glen.trycloudflare.com/api/upload/${this.owner}/${this.repoName}`,
-            formData,
             {
+              method: "POST",
               headers: {
                 Authorization: `Bearer ${token}`,
-                "Content-Type": "multipart/form-data",
               },
-              onUploadProgress: (progressEvent) => {
-                if (progressEvent.total) {
-                  const totalFilesUploaded = index * CHUNK_SIZE + progressEvent.loaded;
-                  this.uploadProgress = Math.round(
-                    (totalFilesUploaded * 100) / this.files.length
-                  );
-                }
-              },
+              body: formData,
             }
           );
 
+          if (!response.ok) {
+            const error = await response.json();
+            console.error("Error uploading batch:", error);
+            throw new Error("Batch upload failed");
+          }
+
+          // Update progress
           console.log(`Batch ${index + 1}/${chunks.length} uploaded.`);
+          this.uploadProgress = Math.round(((index + 1) / chunks.length) * 100);
         }
 
         this.uploadMessage = "All files uploaded successfully.";
       } catch (error) {
-        console.error("Failed to upload batch:", error);
+        console.error("Failed to upload files:", error);
         this.uploadMessage = "Error uploading files.";
       } finally {
         this.uploading = false;
@@ -396,7 +397,7 @@ export default {
   mounted() {
     // Check URL params for token, owner, repo
     const params = new URLSearchParams(window.location.search);
-    const token = params.get("token");
+    const token = params.get("github_token");
     if (!token) {
       this.isAuthenticated = false;
       return;
