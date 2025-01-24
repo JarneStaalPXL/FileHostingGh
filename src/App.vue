@@ -397,7 +397,7 @@ export default {
   mounted() {
     // Check URL params for token, owner, repo
     const params = new URLSearchParams(window.location.search);
-    const token = params.get("github_token");
+    const token = params.get("github_token") || localStorage.getItem("github_token");
     if (!token) {
       this.isAuthenticated = false;
       return;
