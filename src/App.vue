@@ -56,11 +56,7 @@
               <div class="field mb-3">
                 <label class="label">Or Select Files</label>
                 <div class="control">
-                  <input
-                    type="file"
-                    multiple
-                    @change="onFileSelected"
-                  />
+                  <input type="file" multiple @change="onFileSelected" />
                 </div>
               </div>
 
@@ -198,9 +194,11 @@ export default {
     // Called when user selects a folder (webkitdirectory)
     onFolderSelected(e) {
       const folderFiles = Array.from(e.target.files);
+      const folderName = folderFiles[0]?.webkitRelativePath.split("/")[0]; // Eerste map
       folderFiles.forEach((file) => {
         this.addFileWithChunking(file);
       });
+      console.log("Folder selected:", folderName);
     },
 
     // Called when user selects normal single/multiple files
